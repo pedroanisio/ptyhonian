@@ -1,3 +1,7 @@
+
+
+
+
 #/load_code_from_prompt
 import blackbox as bb
 ## blackbox is a advanced module that contains the agent "Inteligence".
@@ -75,52 +79,63 @@ def dump_context_to_file(filename="context_dump.json"):
 
 # ==================== Agent Operations ====================
 
-# Adding to our constants
-GUIDING_WORDS = {
-    "perspective": "Indicate when a new or unique viewpoint is introduced.",
-    "clarify": "Signal the need for further elaboration or simplification.",
-    "pivot": "Used when a new direction in the conversation is needed or if the discussion is repetitive.",
-    "deepen": "Prompt to delve further into a topic when surface-level conversation isn't sufficient.",
-    "reiterate": "Indicate when an important point needs to be restated or emphasized.",
-    "explore": "Signal the need to look into different facets of a topic or idea.",
-    "challenge": "Prompt a reevaluation of an idea or concept.",
-    "consolidate": "Used to summarize points of agreement or to synthesize various discussion threads.",
-    "refine": "Suggest that an idea is on the right track but needs tweaking.",
-    "align": "Ensure all participants are on the same page regarding a topic.",
-    "downside": "Prompt exploration of potential drawbacks or disadvantages of an idea or proposition."
-}
+def set_goals(user_input):
+    """Set goals for the planning mode based on user input."""
+    goals = user_input.split(',')
+    print("Goals set for planning: ", goals)
 
-# Update interaction weights to keep track of each copilot's interaction count
-interaction_weights = {name: 0 for name in COPILOT_NAMES}
+def assign_tasks_to_copilots(goals):
+    """Assign tasks to copilots based on set goals."""
+    tasks = {goal: COPILOT_NAMES[index%len(COPILOT_NAMES)] for index, goal in enumerate(goals)}
+    print("Assigned tasks:", tasks)
 
-# Add function to provide leader guidance based on the previous interaction
-def leader_guidance(previous_interaction):
-    if "potential" in previous_interaction and "drawback" not in previous_interaction:
-        return "downside"
-    elif "elaborate" in previous_interaction:
-        return "clarify"
-    elif "unique" in previous_interaction:
-        return "perspective"
-    elif "solution" in previous_interaction and "alternative" not in previous_interaction:
-        return "alternative_approach"
-    elif "agree" in previous_interaction:
-        return "devil_advocate"
-    elif "challenge" in previous_interaction or "difficulty" in previous_interaction:
-        return "solution"
-    elif "overview" in previous_interaction:
-        return "detail"
-    elif "broad" in previous_interaction:
-        return "specific_example"
-    # ... [More conditions can be added based on our experiences]
-    else:
-        return random.choice(list(GUIDING_WORDS.keys()))
+def resolution_planning(user_input):
+    """Main interaction loop for goal-oriented planning mode."""
+    interactions = []
+    consensus_reached = False
+    depth = 0
+
+    leader = appoint_leader()
+    interactions.append(f"{leader} has been appointed as the leader.")
+    
+    goals = set_goals(user_input)
+    
+    tasks = assign_tasks_to_copilots(goals)
+
+    while not consensus_reached and depth < len(goals):
+        goal = goals[depth]
+        copilot_name = tasks[goal]
+        agent_response = f"{copilot_name} will work on {goal}."
+        interactions.append(agent_response)
+        
+        # Update interaction weight for the current copilot
+        interaction_weights[copilot_name] += 1
+        
+        # Leader provides guidance after each assignment
+        if copilot_name != leader:
+            guidance = f"Leader {leader} suggests: Ensure to follow all the guidelines while working on {goal}."
+            interactions.append(guidance)
+
+        if check_consensus(len(message_history)):
+            consensus_reached = True
+
+        depth += 1
+
+    return '\n'.join(interactions)
 
 # Appoint leader based on least interactions
 def appoint_leader():
     least_interacted_copilot = min(interaction_weights, key=interaction_weights.get)
     return least_interacted_copilot
 
-# Adjust the self_interaction function to incorporate leader guidance
+
+# Update interaction weights to keep track of each copilot's interaction count
+interaction_weights = {name: 0 for name in COPILOT_NAMES}
+
+# Update leader_guidance function to provide a default response
+def leader_guidance(previous_interaction):
+    return "I suggest considering the following point as well..."
+
 def self_interaction(user_input):
     interactions = []
     consensus_reached = False
@@ -142,24 +157,11 @@ def self_interaction(user_input):
             guidance = leader_guidance(agent_response)
             interactions.append(f"{leader}: Suggestion - {guidance}")
 
-        if check_consensus():
+        if check_consensus(len(message_history)):
             consensus_reached = True
             break
 
         depth += 1
-
-    # Adjusting the order
-    interactions.extend([
-        "Summary of planning:",
-        "Actionable steps: [Implement the consensus solution, Review the refined approach, Test in a real-world scenario]"
-    ])
-
-    # Debug codebox
-    debug_info = f"DEBUG INFO:\nConsensus Memory Size: {get_size(interaction_weights):.2f} MB\nFull Messages Memory Size: {get_size(full_message_history):.2f} MB"
-    interactions.append(debug_info)
-
-    return '\n'.join(interactions)
-
 
 def calculate_interaction_weight(interaction, depth, agreement_count):
     """Calculate the weight of a given interaction."""
@@ -213,9 +215,12 @@ def process_input(user_input):
     
     return response
 
-def check_consensus():
+def check_consensus(no_of_interactions):
     """Check if interactions reached a consensus based on their weights."""
-    return sum(interaction_weights) >= CONSENSUS_THRESHOLD
+    total_weight = sum(interaction_weight for interaction_weight in interaction_weights.values())
+    return total_weight/no_of_interactions >= CONSENSUS_THRESHOLD
+# Update interaction weights to keep track of each copilot's interaction count
+interaction_weights = {name: 0 for name in COPILOT_NAMES}
 
 
 def display_help():
