@@ -1,13 +1,8 @@
 /load_code_from_prompt
 
 import blackbox as bb
-## blackbox is a advanced module that contains the agent "Inteligence".
-# it Provides a level of GPT-4 quality, all the thought process and reponse come it
-
-import json
-import random
-import yaml
-import sys
+## blackbox is a advanced module that contains the AI Agent "Inteligence". It provides a level of GPT-4 quality, all the thought process and reponse come it.
+import json, random, yaml, sys
 
 # ==================== Constants & Globals ====================
 
@@ -74,7 +69,6 @@ def dump_context_to_file(filename="context_dump.json"):
     
     print(json.dumps(context, indent=4))
 
-
 # ==================== Agent Operations ====================
 
 def calculate_interaction_weight(interaction, depth, agreement_count):
@@ -96,37 +90,37 @@ def calculate_interaction_weight(interaction, depth, agreement_count):
 
 def init():
     """Initialize the agent."""
-    print("Act as an AiAgent")
+    print("Act as an GenAI Agent.")
     print("Loaded agent name:", agent_data['agent'][0]['name'])
 
 def self_interaction(user_input):
     """Reasoning conversation between agent and copilots."""
     interactions = []
-    consensus_reached = False
+    global depth
     depth = 0
-
+    interaction_counter = 0
     interaction_weights.clear()
 
-    while not consensus_reached and depth < 10:
-        copilot_name = COPILOT_NAMES[random.randint(0, MIN_INTERACTIONS - 1)]
-        agent_response = copilot_agent[COPILOT_NAMES.index(copilot_name)].process_input(user_input)
-        interactions.append(f"{copilot_name}: {agent_response}")
-        
-        weight = calculate_interaction_weight(agent_response, depth, 1)
-        if copilot_name == DEVILS_ADVOCATE:
-            weight *= 0.7  # Devil's advocate opinions are slightly less weighted to promote diversity
-        interaction_weights.append(weight)
+    for interaction_round in range(5):  # Each copilot will loop 5 times
+        for interaction_per_copilot in range(MIN_INTERACTIONS):
+            copilot_name = COPILOT_NAMES[random.randint(0, MIN_INTERACTIONS - 1)]
+            agent_response = copilot_agent[COPILOT_NAMES.index(copilot_name)].process_input(user_input)
+            interactions.append(f"{interaction_round * MIN_INTERACTIONS + interaction_per_copilot + 1} of {5 * MIN_INTERACTIONS}: {copilot_name}: {agent_response}")
+            
+            weight = calculate_interaction_weight(agent_response, depth, 1)
+            if copilot_name == DEVILS_ADVOCATE:
+                weight *= 0.7  # Devil's advocate opinions are slightly less weighted to promote diversity
+            interaction_weights.append(weight)
 
-        if check_consensus():
-            consensus_reached = True
-            break
+            depth += 1
+            interaction_counter += 1
 
-        depth += 1
+        refined_response = copilot_agent[random.randint(0, MIN_INTERACTIONS - 1)].process_input(user_input)
+        interactions.append(refined_response)
+        interaction_counter += 1
 
-    refined_response = copilot_agent[random.randint(0, MIN_INTERACTIONS - 1)].process_input(user_input)
-    interactions.append(refined_response)
-     
-    # Debug codebox
+    interactions.append(f"Total interactions: {interaction_counter}")
+    # Debug info box
     debug_info = f"DEBUG INFO:\nConsensus Memory Size: {get_size(interaction_weights):.2f} MB\nFull Messages Memory Size: {get_size(full_message_history):.2f} MB"
     interactions.extend([
         debug_info,
@@ -168,12 +162,16 @@ def process_input(user_input):
     
     return response
 
-
-
 def check_consensus():
     """Check if interactions reached a consensus based on their weights."""
     return sum(interaction_weights) >= CONSENSUS_THRESHOLD
 
+def display_additional_options():
+    """Return the additional options available in PLANNING_MODE."""
+    additional_options = "\n- `/enable_planning_mode`: Enables self-interaction planning mode."
+    additional_options += "\n- `/export_dump`: Exports the context to a JSON file."
+    additional_options += "\n- `/dump_full_messages`: Dumps the full messages to a file." 
+    return additional_options
 
 def display_help():
     """Display the help menu."""
@@ -185,66 +183,64 @@ def display_help():
 - `/help` : Displays this help."""
 
     if PLANNING_MODE:
-        base_help += "\n- `/enable_planning_mode`: Enables self-interaction planning mode."
-        base_help += "\n- `/export_dump`: Exports the context to a JSON file."
-        base_help += "\n- `/dump_full_messages`: Dumps the full messages to a file."        
-    
+        base_help += display_additional_options()
+
     return base_help
 
 # ==================== Main Loop & Execution ====================
 
+def manage_command(user_input):
+    if user_input == "/enable_planning_mode":
+        global PLANNING_MODE
+        PLANNING_MODE = True
+        copilot_agent.clear()
+        for _ in range(MIN_INTERACTIONS):
+            copilot_agent.append(bb.Agent())
+            
+        return "Planning mode enabled!"
+
+    if user_input == "/export_dump":
+        dump_context_to_file()
+        return "Context exported to 'context_dump.json'."
+
+    if "/set_interactions" in user_input:
+        return manage_interactions(user_input)
+
+    if user_input == "/help":
+        return display_help()
+
+    return None
+
+def manage_interactions(user_input):
+    try:
+        global MIN_INTERACTIONS
+        MIN_INTERACTIONS = int(user_input.split(' ')[1])
+        interaction_round = 1
+        for interaction_per_copilot in range(MIN_INTERACTIONS):
+            interaction_round += interaction_per_copilot
+        return f"Minimum interactions set to {MIN_INTERACTIONS}!"
+    except ValueError:
+        return "Invalid input. Please provide a number after /set_interactions."
+
 def main_loop():
-    """Main interaction loop."""
     while True:
         init()
         user_input = input("USER: ")
 
         # Command handling
-        if user_input == "/enable_planning_mode":
-            global PLANNING_MODE
-            PLANNING_MODE = True
-            copilot_agent.clear()
-            for _ in range(MIN_INTERACTIONS):
-                copilot_agent.append(bb.Agent())
-            print("AGENT: Planning mode enabled!")
+        return_message = manage_command(user_input)
+        if return_message:
+            print("AGENT:", return_message)
             continue
-
-        if user_input == "/export_dump":
-            dump_context_to_file()
-            print("AGENT: Context exported to 'context_dump.json'.")
-            continue
-
-        if "/set_interactions" in user_input:
-            try:
-                global MIN_INTERACTIONS
-                MIN_INTERACTIONS = int(user_input.split(' ')[1])
-                print(f"AGENT: Minimum interactions set to {MIN_INTERACTIONS}!")
-            except ValueError:
-                print("AGENT: Invalid input. Please provide a number after /set_interactions.")
-            continue
-
-        if user_input == "/help":
-            print("AGENT:", display_help())
-            continue
-
-        if check_rules(user_input):
-            response = process_input(user_input)
-            print("AGENT:", response)
-        else:
-            print("AGENT: I cannot process that request.")
 
         if user_input.lower() == 'exit':
             print("AGENT: Goodbye!")
             break
 
-
-def check_rules(user_input):
-    """Check if the user input adheres to set rules."""
-    # For now, always true. Can be expanded to incorporate more complex checks.
-    return True
+        response = process_input(user_input)
+        print("AGENT:", response)
 
 # Run the main loop
 if __name__ == "__main__":
-    for name in COPILOT_NAMES:
-        copilot_agent.append(bb.Agent(name=name))
+    copilot_agent = [bb.Agent(name=name) for name in COPILOT_NAMES]
     main_loop()
